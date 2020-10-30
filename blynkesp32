@@ -1,0 +1,26 @@
+#define BLYNK_PRINT Serial
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+char auth[] = "p5O4uuGf4Ig_WEH-uIjWR0ATcSPtPuz_";
+
+char ssid[] = "ARRIS-20A2";
+char pass[] = "JPNL9CRJEPXE9VCU";
+
+void setup()
+{
+  // Debug console
+  Serial.begin(115200);
+
+  Blynk.begin(auth, ssid, pass);
+  
+  Blynk.notify("Conectado a cerradura");
+  Blynk.email("silva.espinoza.jesus@gmail.com", "ESP32", "Conectado a cerradura");
+}
+
+void loop()
+{
+  Blynk.run();
+}
