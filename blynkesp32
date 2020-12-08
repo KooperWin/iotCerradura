@@ -1,26 +1,390 @@
-#define BLYNK_PRINT Serial
-
+#include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <BlynkSimpleEsp32.h>
+#include <RTClib.h>
+#include <PubSubClient.h>
+#include <ESP32_MailClient.h>
 
-char auth[] = "p5O4uuGf4Ig_WEH-uIjWR0ATcSPtPuz_";
+//**************************************
+//*********** MQTT CONFIG **************
+//**************************************
+const char *mqtt_server = "ioticos.org";
+const int mqtt_port = 1883;
+const char *mqtt_user = "eJ83QiwCgg42aRV";
+const char *mqtt_pass = "qWBrDKXf9gKOOvl";
+const char *root_topic_subscribe = "5J4eMVxixNzCPKu/input";
+const char *root_topic_publish = "5J4eMVxixNzCPKu/output";
+int LED_BUILTIN = 2;
+RTC_DS3231 RTC;
 
-char ssid[] = "ARRIS-20A2";
-char pass[] = "JPNL9CRJEPXE9VCU";
+//**************************************
+//*********** WIFICONFIG ***************
+//**************************************
+const char* ssid = "ARRIS-20A2";
+const char* password =  "JPNL9CRJEPXE9VCU";
 
-void setup()
-{
-  // Debug console
-  Serial.begin(115200);
+WiFiServer server(80);
 
-  Blynk.begin(auth, ssid, pass);
-  
-  Blynk.notify("Conectado a cerradura");
-  Blynk.email("silva.espinoza.jesus@gmail.com", "ESP32", "Conectado a cerradura");
+//------------------------CODIGO HTML------------------------------
+String pagina = "<!DOCTYPE HTML>"
+"<html>"
+"<head>  "
+"<center>"
+"<h1>Servidor Web ESP32</h1>"
+"<p><a href='/on'><button style='height:50px;width:100px'>ABRIR</button></a></p>"
+"<p><a href='/off'><button style='height:50px;width:100px'>CERRAR</button></a></p>"
+"</center>"
+"<script>"
+"window.onload = function () {"
+"var chart = new CanvasJS.Chart('chartContainer', {"
+"	theme: 'light2',"
+"	animationEnabled: false,	"
+"	title:{"
+"		text: 'Actividad de Cerradura Electronica 2020'"
+"	},"
+"	data: ["
+"	{"
+"		type: 'column',"
+"		dataPoints: ["
+"			{ label: 'enero',  y: 69  },"
+"			{ label: 'febrero',  y: 65  },"
+"			{ label: 'marzo',  y: 51  },"
+"			{ label: 'abril',  y: 52  },"
+"			{ label: 'mayo',  y: 48  },"
+"			{ label: 'junio',  y: 49  },"
+"			{ label: 'julio',  y: 43  },"
+"			{ label: 'agosto',  y: 45  },"
+"			{ label: 'septiembre', y: 55  },"
+"			{ label: 'octubre', y: 69  },"
+"			{ label: 'noviembre',  y: 74  },"
+"			{ label: 'diciembre',  y: 76  }"
+"		]"
+"	}"
+"	]"
+"});"
+"chart.render();"
+"var chart = new CanvasJS.Chart('chartContainer2', {"
+"theme: 'light2',"
+"	animationEnabled: false,"
+"	title:{"
+"		text: 'Temperatura de ESP32 Noviembre 2020'"
+"	},"
+"	data: ["
+"	{"
+"		type: 'area',"
+"		dataPoints: ["
+"			{ label: '01',  y: 28  },"
+"			{ label: '02',  y: 32  },"
+"			{ label: '03',  y: 29  },"
+"			{ label: '04',  y: 30  },"
+"			{ label: '05',  y: 35  },"
+"			{ label: '06',  y: 36  },"
+"			{ label: '07',  y: 37  },"
+"			{ label: '08',  y: 39  },"
+"			{ label: '09', y: 40  },"
+"			{ label: '10', y: 39  },"
+"			{ label: '11',  y: 38  },"
+"			{ label: '12',  y: 35  },"
+"			{ label: '13',  y: 34  },"
+"			{ label: '14',  y: 34  },"
+"			{ label: '15',  y: 34  },"
+"			{ label: '16',  y: 32  },"
+"			{ label: '17',  y: 33  },"
+"			{ label: '18',  y: 32  },"
+"			{ label: '19',  y: 31  },"
+"			{ label: '20',  y: 31  },"
+"			{ label: '21',  y: 28  },"
+"			{ label: '22',  y: 27  },"
+"			{ label: '23',  y: 28  },"
+"			{ label: '24',  y: 25  },"
+"			{ label: '25',  y: 25  },"
+"			{ label: '26',  y: 26  },"
+"			{ label: '27',  y: 24  },"
+"			{ label: '28',  y: 25  },"
+"			{ label: '29',  y: 25  },"
+"			{ label: '30',  y: 24  }"
+"		]"
+"	}"
+"	]"
+"});  "
+"chart.render();"
+"var chart = new CanvasJS.Chart('chartContainer3', {"
+"animationEnabled: true,"
+"	exportEnabled: true,"
+"	title:{"
+"		text: 'Voltaje Cerradura - Noviembre 2020'"
+"	},"
+"	axisY: {"
+"		title: 'Voltaje (V)',"
+"		suffix: ' V'"
+"	},"
+"	axisX: {"
+"		valueFormatString: 'DD MMMM'"
+"	},"
+"	data: ["
+"	{"
+"		type: 'rangeArea',"
+"		xValueFormatString: 'DD MMMM', "
+"		yValueFormatString: '#0.## °C',"
+"		toolTipContent: ' <span style=\"color:#4F81BC\">{x}</span><br><b>Min:</b> {y[0]}<br><b>Max:</b> {y[1]}',"
+"		dataPoints: ["
+"			{ x: new Date(2020,10,01), y:[12, 12] },"
+"			{ x: new Date(2020,10,02), y:[12, 12] },"
+"			{ x: new Date(2020,10,03), y:[11.4, 12] },"
+"			{ x: new Date(2020,10,04), y:[11.5, 12] },"
+"			{ x: new Date(2020,10,05), y:[11.8, 12] },"
+"			{ x: new Date(2020,10,06), y:[11.6, 12] },"
+"			{ x: new Date(2020,10,07), y:[11.9, 12] },"
+"			{ x: new Date(2020,10,08), y:[12, 12] },"
+"			{ x: new Date(2020,10,09), y:[12, 12] },"
+"			{ x: new Date(2020,10,10), y:[12, 12] },"
+"			{ x: new Date(2020,10,11), y:[12, 12] },"
+"			{ x: new Date(2020,10,12), y:[12, 12] },"
+"			{ x: new Date(2020,10,13), y:[12, 12] },"
+"			{ x: new Date(2020,10,14), y:[11.5, 12] },"
+"			{ x: new Date(2020,10,15), y:[11, 12] },"
+"			{ x: new Date(2020,10,16), y:[11.4, 12] },"
+"			{ x: new Date(2020,10,17), y:[11.6, 12] },"
+"			{ x: new Date(2020,10,18), y:[11.8, 12] },"
+"			{ x: new Date(2020,10,19), y:[11, 12] },"
+"			{ x: new Date(2020,10,20), y:[11, 12] },"
+"			{ x: new Date(2020,10,21), y:[11.1, 12] },"
+"			{ x: new Date(2020,10,22), y:[12, 12] },"
+"			{ x: new Date(2020,10,23), y:[12, 12] },"
+"			{ x: new Date(2020,10,24), y:[12, 12] },"
+"			{ x: new Date(2020,10,25), y:[12, 12] },"
+"			{ x: new Date(2020,10,26), y:[12, 12] },"
+"			{ x: new Date(2020,10,27), y:[12, 12] },"
+"			{ x: new Date(2020,10,28), y:[12, 12] },"
+"			{ x: new Date(2020,10,29), y:[12, 12] },"
+"			{ x: new Date(2020,10,30), y:[12, 12] }"
+"		]"
+"	}]"
+"});"
+"chart.render();"
+"}"
+"</script>"
+"</head>"
+"<body>"
+"<div id='chartContainer' style='height: 370px; width: 100%;'></div>"
+"<div id='chartContainer2' style='height: 370px; width: 100%;'></div>"
+"<div id='chartContainer3' style='height: 300px; width: 100%;'></div>"
+"<script src='https://canvasjs.com/assets/script/canvasjs.min.js'> </script>"
+"</body>"
+"</html>"
+;
+
+
+
+//**************************************
+//*********** GLOBALES   ***************
+//**************************************
+WiFiClient espClient;
+PubSubClient client(espClient);
+char msg[25];
+long count=0;
+SMTPData datosSMTP;
+String incoming = "";
+String mensaje = "";
+
+int contconexion = 0;
+String header; // Variable para guardar el HTTP request
+String estadoSalida = "off";
+const int salida = 2;
+
+//************************
+//** F U N C I O N E S ***
+//************************
+void callback(char* topic, byte* payload, unsigned int length);
+void reconnect();
+void setup_wifi();
+void correoAbierta();
+
+void correoAbierta(){
+	datosSMTP.setLogin("smtp.gmail.com", 465, "esp32devmailsender@gmail.com", "JesusAntonioSilva15");
+	datosSMTP.setSender("ESP32S", "esp32devmailsender@gmail.com");
+	datosSMTP.setPriority("High");
+	datosSMTP.setSubject("ESP32 HOGAR OPENED");
+	datosSMTP.setMessage("Hola soy el esp32 y me estoy comunicando contigo, la puerta fue abierta.", false);
+	datosSMTP.addRecipient("silva.espinoza.jesus@gmail.com");
+	if (!MailClient.sendMail(datosSMTP))
+	Serial.println("Error enviando el correo, " + MailClient.smtpErrorReason());
+	datosSMTP.empty();
 }
 
-void loop()
-{
-  Blynk.run();
+void setup() {
+  pinMode(LED_BUILTIN,OUTPUT);
+  digitalWrite(LED_BUILTIN,LOW);
+  Serial.begin(115200);
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+  server.begin(); // iniciamos el servidor
+  
+  
+
+}
+
+void loop() {
+  WiFiClient cliente = server.available();
+  if (cliente) {                             // Si se conecta un nuevo cliente
+    Serial.println("New Client.");          // 
+    String currentLine = "";                //
+    while (cliente.connected()) {            // loop mientras el cliente está conectado
+      if (cliente.available()) {             // si hay bytes para leer desde el cliente
+        char c = cliente.read();             // lee un byte
+        Serial.write(c);                    // imprime ese byte en el monitor serial
+        header += c;
+        if (c == '\n') {                    // si el byte es un caracter de salto de linea
+          // si la nueva linea está en blanco significa que es el fin del 
+          // HTTP request del cliente, entonces respondemos:
+          if (currentLine.length() == 0) {
+            cliente.println("HTTP/1.1 200 OK");
+            cliente.println("Content-type:text/html");
+            cliente.println("Connection: close");
+            cliente.println();
+            
+            // enciende y apaga el GPIO
+            if (header.indexOf("GET /on") >= 0) {
+              Serial.println("GPIO on");
+              estadoSalida = "on";
+              digitalWrite(LED_BUILTIN, HIGH);
+            } else if (header.indexOf("GET /off") >= 0) {
+              Serial.println("GPIO off");
+              estadoSalida = "off";
+              digitalWrite(LED_BUILTIN, LOW);
+            }
+            
+            // Muestra la página web
+            cliente.println(pagina);
+            
+            // la respuesta HTTP temina con una linea en blanco
+            cliente.println();
+            break;
+          } else { // si tenemos una nueva linea limpiamos currentLine
+            currentLine = "";
+          }
+        } else if (c != '\r') {  // si C es distinto al caracter de retorno de carro
+          currentLine += c;      // lo agrega al final de currentLine
+        }
+      }
+    }
+    // Limpiamos la variable header
+    header = "";
+    // Cerramos la conexión
+    cliente.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+  }
+
+
+
+
+  if (!client.connected()) {
+		reconnect();
+	}
+
+  if (client.connected()){
+    
+	//String str = "La cuenta es -> " + String(count);
+    //str.toCharArray(msg,25);
+    //client.publish(root_topic_publish,msg);
+    //count++;
+
+	
+
+
+	if (incoming.equalsIgnoreCase("0"))
+	{
+		digitalWrite(2,HIGH);
+		correoAbierta();
+		mensaje = "Puerta Abierta";
+		mensaje.toCharArray(msg,25);
+		client.publish(root_topic_publish,msg);
+	}
+	else if (incoming.equalsIgnoreCase("1"))
+	{
+		digitalWrite(2,LOW);
+		mensaje = "Puerta Cerrada";
+		mensaje.toCharArray(msg,25);
+		client.publish(root_topic_publish,msg);
+	}
+	incoming = "";
+    delay(1000);
+  }
+  client.loop();
+}
+
+
+
+
+//*****************************
+//***    CONEXION WIFI      ***
+//*****************************
+void setup_wifi(){
+	delay(10);
+	// Nos conectamos a nuestra red Wifi
+	Serial.println();
+	Serial.print("Conectando a ssid: ");
+	Serial.println(ssid);
+
+	WiFi.begin(ssid, password);
+
+	while (WiFi.status() != WL_CONNECTED) {
+		delay(500);
+		Serial.print(".");
+	}
+
+	Serial.println("");
+	Serial.println("Conectado a red WiFi!");
+	Serial.println("Dirección IP: ");
+	Serial.println(WiFi.localIP());
+}
+
+
+
+//*****************************
+//***    CONEXION MQTT      ***
+//*****************************
+
+void reconnect() {
+
+	while (!client.connected()) {
+		Serial.print("Intentando conexión Mqtt...");
+		// Creamos un cliente ID
+		String clientId = "IOTICOS_H_W_";
+		clientId += String(random(0xffff), HEX);
+		// Intentamos conectar
+		if (client.connect(clientId.c_str(),mqtt_user,mqtt_pass)) {
+			Serial.println("Conectado!");
+			// Nos suscribimos
+			if(client.subscribe(root_topic_subscribe)){
+        Serial.println("Suscripcion ok");
+      }else{
+        Serial.println("fallo Suscripciión");
+      }
+		} else {
+			Serial.print("falló :( con error -> ");
+			Serial.print(client.state());
+			Serial.println(" Intentamos de nuevo en 5 segundos");
+			delay(5000);
+		}
+	}
+}
+
+
+//*****************************
+//***       CALLBACK        ***
+//*****************************
+
+void callback(char* topic, byte* payload, unsigned int length){
+	incoming = "";
+	Serial.print("Mensaje recibido desde -> ");
+	Serial.print(topic);
+	Serial.println("");
+	for (int i = 0; i < length; i++) {
+		incoming += (char)payload[i];
+	}
+	incoming.trim();
+	Serial.println("Mensaje -> " + incoming);
+		
 }
