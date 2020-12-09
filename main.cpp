@@ -30,8 +30,8 @@ String pagina = "<!DOCTYPE HTML>"
 "<head>  "
 "<center>"
 "<h1>Servidor Web ESP32</h1>"
-"<p><a href='/on'><button style='height:50px;width:100px'>ABRIR</button></a></p>"
-"<p><a href='/off'><button style='height:50px;width:100px'>CERRAR</button></a></p>"
+"<p><a href='/on'><button style='height:50px;width:100px'>CERRAR</button></a></p>"
+"<p><a href='/off'><button style='height:50px;width:100px'>ABRIR</button></a></p>"
 "</center>"
 "<script>"
 "window.onload = function () {"
@@ -190,6 +190,8 @@ int contconexion = 0;
 String header; // Variable para guardar el HTTP request
 String estadoSalida = "off";
 const int salida = 2;
+int rele2 = 13;
+int rele3 = 14;
 
 //************************
 //** F U N C I O N E S ***
@@ -198,6 +200,32 @@ void callback(char* topic, byte* payload, unsigned int length);
 void reconnect();
 void setup_wifi();
 void correoAbierta();
+void enviarMensaje();
+
+String apikye = "o.TgfyzNc8EwhqXlGa2M6dNOHeikleyZZq";
+void enviarMensaje(String title,String mensjj){
+	WiFiClientSecure clienton;
+	if(!clienton.connect("api.pushbullet.com",443)){
+		Serial.print("No se pudo conectar con pushbullet");
+	}
+	String urrrl = "/v2/pushes";
+	String mmmsg = "{\"type\":\"note\",\"title\":\""+title+"\",\"body\":\""+mensjj+"\"}\r\n";
+	Serial.print(urrrl);
+	clienton.print(String("POST ")+urrrl+" HTTP/1.1\r\n"+
+	"Host: "+"api.pushbullet.com"+"\r\n"+
+	"Authorization: Bearer "+apikye+"\r\n"+
+	"Content-Type: application/json\r\n" +
+	"Content-Length: "+String(mmmsg.length()) + "\r\n\r\n");
+	clienton.print(mmmsg);
+	delay(2000);
+	while(clienton.available()==0);
+	
+	while(clienton.available()){
+		String line = clienton.readStringUntil('\n');
+		Serial.println(line);
+	}
+		
+}
 
 void correoAbierta(){
 	datosSMTP.setLogin("smtp.gmail.com", 465, "esp32devmailsender@gmail.com", "JesusAntonioSilva15");
@@ -213,7 +241,11 @@ void correoAbierta(){
 
 void setup() {
   pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,LOW);
+  pinMode(rele2,OUTPUT);
+  pinMode(rele3,OUTPUT);
+  digitalWrite(rele2, LOW);
+  digitalWrite(rele3, LOW);
+  
   Serial.begin(115200);
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
@@ -243,15 +275,17 @@ void loop() {
             cliente.println("Connection: close");
             cliente.println();
             
-            // enciende y apaga el GPIO
-            if (header.indexOf("GET /on") >= 0) {
+            // enciende y apaga el GPIO por medio DEL SERVIDOR WEB ESP32
+            if (header.indexOf("GET /on") >= 0) { //ON
               Serial.println("GPIO on");
               estadoSalida = "on";
-              digitalWrite(LED_BUILTIN, HIGH);
-            } else if (header.indexOf("GET /off") >= 0) {
+              digitalWrite(rele2, HIGH);//mandar señales
+			  digitalWrite(rele3, HIGH);
+            } else if (header.indexOf("GET /off") >= 0) { //OFF
               Serial.println("GPIO off");
               estadoSalida = "off";
-              digitalWrite(LED_BUILTIN, LOW);
+              digitalWrite(rele2, LOW);//mandar señal apagado
+			  digitalWrite(rele3, LOW);
             }
             
             // Muestra la página web
@@ -293,18 +327,22 @@ void loop() {
 	
 
 
-	if (incoming.equalsIgnoreCase("0"))
+	if (incoming.equalsIgnoreCase("0")) //MQTT RECIBIENDO MENSAJE
 	{
-		digitalWrite(2,HIGH);
-		correoAbierta();
-		mensaje = "Puerta Abierta";
+		digitalWrite(rele2, HIGH); //SI EL MENSAJE ES 0 Cerrada LA CHAPA
+	 	digitalWrite(rele3, HIGH);
+		
+		mensaje = "Puerta Cerrada";
 		mensaje.toCharArray(msg,25);
 		client.publish(root_topic_publish,msg);
 	}
 	else if (incoming.equalsIgnoreCase("1"))
 	{
-		digitalWrite(2,LOW);
-		mensaje = "Puerta Cerrada";
+		digitalWrite(rele2, LOW); //SI EL MENSAJE ES 1 Abierta LA CHAPA
+		digitalWrite(rele3, LOW);
+		correoAbierta();
+		enviarMensaje("NotificacionPuerta","Puerta abierta");
+		mensaje = "Puerta Abierta";
 		mensaje.toCharArray(msg,25);
 		client.publish(root_topic_publish,msg);
 	}
